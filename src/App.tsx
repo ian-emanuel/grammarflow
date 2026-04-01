@@ -21,12 +21,64 @@ import {
   Search,
   GraduationCap,
   Target,
-  Lightbulb
+  Lightbulb,
+  Plus,
+  Globe,
+  Map,
+  Database,
+  Flame,
+  Brain,
+  Coins,
+  ShoppingBag,
+  Users,
+  Star,
+  Lock,
+  Crown
 } from 'lucide-react';
-import { generateExercise, generateIntroduction } from './services/gemini';
-import { Exercise, GrammarTopic, UserProgress, Introduction, Category, VerbType, PersonId, SentencePart } from './types';
+import { generateExercise, generateIntroduction, generateSpeech } from './services/gemini';
+import { auth, googleProvider, syncUserProgress, getUserData, getLeaderboard } from './firebase';
+import { signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { 
+  Exercise, 
+  GrammarTopic, 
+  UserProgress, 
+  Introduction, 
+  Category, 
+  VerbType, 
+  PersonId, 
+  SentencePart,
+  ModuleId,
+  Module,
+  CategoryId,
+  LanguagePair,
+  Concept,
+  World,
+  LeaderboardEntry
+} from './types';
 import { PRE_DESIGNED_DATA, VERB_BANK } from './constants';
+import { GRAMMAR_COLORS, CONTEXT_THEMES } from './constants/colors';
 import { cn } from './lib/utils';
+
+const MODULES: Module[] = [
+  {
+    id: 'fundamentos',
+    label: 'Fundamentos',
+    icon: 'fa-solid fa-seedling',
+    categories: ['pronombres', 'vocabulario', 'preposiciones', 'adverbios']
+  },
+  {
+    id: 'tiempos',
+    label: 'Tiempos Verbales',
+    icon: 'fa-solid fa-clock',
+    categories: ['tiempos_simples', 'tiempos_continuos', 'tiempos_perfectos']
+  },
+  {
+    id: 'avanzado',
+    label: 'Estructuras Avanzadas',
+    icon: 'fa-solid fa-graduation-cap',
+    categories: ['modales', 'condicionales', 'voz_pasiva', 'discurso_reportado', 'clausulas_relativas']
+  }
+];
 
 const CATEGORIES: { id: Category; label: string; icon: string; topics: GrammarTopic[] }[] = [
   { 
@@ -65,6 +117,42 @@ const CATEGORIES: { id: Category; label: string; icon: string; topics: GrammarTo
     icon: 'fa-solid fa-bolt', 
     topics: ['adverbios'] 
   },
+  { 
+    id: 'vocabulario', 
+    label: 'Vocabulario', 
+    icon: 'fa-solid fa-book', 
+    topics: ['vocabulario_casa', 'vocabulario_super', 'vocabulario_trabajo', 'vocabulario_aeropuerto', 'vocabulario_restaurante', 'vocabulario_escuela'] 
+  },
+  { 
+    id: 'modales', 
+    label: 'Modales', 
+    icon: 'fa-solid fa-shield-halved', 
+    topics: ['modales_basicos', 'modales_perfectos'] 
+  },
+  { 
+    id: 'condicionales', 
+    label: 'Condicionales', 
+    icon: 'fa-solid fa-code-branch', 
+    topics: ['condicional_cero', 'condicional_primero', 'condicional_segundo', 'condicional_tercero'] 
+  },
+  { 
+    id: 'voz_pasiva', 
+    label: 'Voz Pasiva', 
+    icon: 'fa-solid fa-repeat', 
+    topics: ['voz_pasiva_presente', 'voz_pasiva_pasado'] 
+  },
+  { 
+    id: 'discurso_reportado', 
+    label: 'Reported Speech', 
+    icon: 'fa-solid fa-quote-left', 
+    topics: ['reported_speech_presente', 'reported_speech_pasado'] 
+  },
+  { 
+    id: 'clausulas_relativas', 
+    label: 'Cláusulas Relativas', 
+    icon: 'fa-solid fa-link', 
+    topics: ['clausulas_relativas_definidas', 'clausulas_relativas_no_definidas'] 
+  },
 ];
 
 const getBadges = (topic: string) => {
@@ -72,16 +160,125 @@ const getBadges = (topic: string) => {
   return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1));
 };
 
+const WORLDS: World[] = [
+  {
+    id: 'world_1',
+    name: 'Fundamentos',
+    icon: 'fa-solid fa-seedling',
+    color: 'bg-emerald-500',
+    modules: ['fundamentos']
+  },
+  {
+    id: 'world_2',
+    name: 'Tiempos Verbales',
+    icon: 'fa-solid fa-clock',
+    color: 'bg-blue-500',
+    modules: ['tiempos']
+  },
+  {
+    id: 'world_3',
+    name: 'Maestría Avanzada',
+    icon: 'fa-solid fa-crown',
+    color: 'bg-purple-500',
+    modules: ['avanzado']
+  }
+];
+
+const SHOP_ITEMS = [
+  { id: 'refill_hearts', name: 'Refill Corazones', price: 100, icon: <Heart className="w-6 h-6 text-red-500 fill-current" />, description: 'Recupera tus 5 corazones al instante.' },
+  { id: 'streak_freeze', name: 'Protector de Racha', price: 200, icon: <Flame className="w-6 h-6 text-orange-500 fill-current" />, description: 'Mantiene tu racha aunque no practiques un día.' },
+  { id: 'pro_badge', name: 'GrammarFlow Pro', price: 1000, icon: <Crown className="w-6 h-6 text-yellow-500 fill-current" />, description: 'Acceso ilimitado y badges exclusivos.' }
+];
+
 export default function App() {
-  const [view, setView] = useState<'home' | 'intro' | 'lesson' | 'summary'>('home');
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [view, setView] = useState<'home' | 'intro' | 'lesson' | 'summary' | 'roadmap' | 'leaderboard' | 'shop'>('home');
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [progress, setProgress] = useState<UserProgress>({
     level: 1,
     xp: 0,
     hearts: 5,
+    streak: 0,
+    gems: 0,
+    isPro: false,
+    badges: [],
     completedTopics: [],
     selectedVerb: '',
-    selectedVerbType: 'cualquiera'
+    selectedVerbType: 'cualquiera',
+    languagePair: { source: 'es', target: 'en' },
+    inventory: []
   });
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
+      if (firebaseUser) {
+        const savedData = await getUserData(firebaseUser.uid);
+        if (savedData) {
+          setProgress({
+            level: savedData.level || 1,
+            xp: savedData.xp || 0,
+            hearts: savedData.hearts || 5,
+            streak: savedData.streak || 0,
+            gems: savedData.gems || 0,
+            isPro: savedData.isPro || false,
+            badges: savedData.badges || [],
+            completedTopics: savedData.completedTopics || [],
+            selectedVerb: '',
+            selectedVerbType: 'cualquiera',
+            languagePair: { source: 'es', target: 'en' },
+            inventory: []
+          });
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogin = async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      if (result.user) {
+        const savedData = await getUserData(result.user.uid);
+        if (!savedData) {
+          // Initial sync for new user
+          await syncUserProgress(result.user.uid, progress);
+        }
+      }
+    } catch (error) {
+      console.error("Login Error:", error);
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    setView('home');
+  };
+
+  const updateProgress = async (newProgress: Partial<UserProgress>) => {
+    const updated = { ...progress, ...newProgress };
+    setProgress(updated);
+    if (user) {
+      await syncUserProgress(user.uid, updated);
+    }
+  };
+
+  const buyItem = async (item: typeof SHOP_ITEMS[0]) => {
+    if ((progress.gems || 0) < item.price) return;
+    
+    let newProgress: Partial<UserProgress> = { gems: (progress.gems || 0) - item.price };
+    
+    if (item.id === 'refill_hearts') {
+      newProgress.hearts = 5;
+    } else if (item.id === 'pro_badge') {
+      newProgress.isPro = true;
+    } else {
+      newProgress.inventory = [...(progress.inventory || []), item.id];
+    }
+    
+    await updateProgress(newProgress);
+  };
+  const [showMnemonic, setShowMnemonic] = useState(false);
   const [currentCategory, setCurrentCategory] = useState<Category | null>(null);
   const [currentTopic, setCurrentTopic] = useState<GrammarTopic | null>(null);
   const [introduction, setIntroduction] = useState<Introduction | null>(null);
@@ -91,32 +288,76 @@ export default function App() {
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [step, setStep] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
+  const [selectedModule, setSelectedModule] = useState<ModuleId | null>(null);
 
   const [activeForm, setActiveForm] = useState<'afirmativo' | 'negativo' | 'pregunta'>('afirmativo');
   const [activeGroup, setActiveGroup] = useState<'indicativo' | 'subjuntivo'>('indicativo');
   const [activePerson, setActivePerson] = useState<PersonId>('yo');
+  const [activeContext, setActiveContext] = useState<string>('General');
+  const [activeConcept, setActiveConcept] = useState<Concept | null>(null);
+  const [customContext, setCustomContext] = useState('');
+  const [isGeneratingContext, setIsGeneratingContext] = useState(false);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [activePartExplanation, setActivePartExplanation] = useState<string | null>(null);
+
+  const playAudio = async (text: string) => {
+    if (isPlayingAudio) return;
+    setIsPlayingAudio(true);
+    try {
+      const base64Audio = await generateSpeech(text);
+      if (base64Audio) {
+        const audio = new Audio(`data:audio/wav;base64,${base64Audio}`);
+        audio.onended = () => setIsPlayingAudio(false);
+        await audio.play();
+      } else {
+        setIsPlayingAudio(false);
+      }
+    } catch (error) {
+      console.error("Error playing audio:", error);
+      setIsPlayingAudio(false);
+    }
+  };
 
   const startCategory = async (category: Category) => {
     setCurrentCategory(category);
     
     // Check if we have pre-designed data for this category AND NO specific verb is selected
     if (PRE_DESIGNED_DATA[category] && !progress.selectedVerb) {
-      setIntroduction(PRE_DESIGNED_DATA[category] as Introduction);
+      const preDesigned = PRE_DESIGNED_DATA[category] as Introduction;
+      // Map old spanish/english to source/target if necessary
+      const mappedData: Introduction = {
+        ...preDesigned,
+        examples: preDesigned.examples.map(ex => ({
+          ...ex,
+          persons: ex.persons.map(p => ({
+            ...p,
+            forms: p.forms.map(f => ({
+              ...f,
+              source: (f as any).source || (f as any).spanish,
+              target: (f as any).target || (f as any).english
+            }))
+          }))
+        }))
+      };
+      setIntroduction(mappedData);
       setView('intro');
       setActiveForm('afirmativo');
       setActiveGroup('indicativo');
       setActivePerson('yo');
+      setActiveContext(mappedData.examples[0]?.context || mappedData.examples[0]?.tense || 'General');
       return;
     }
 
     setLoading(true);
     try {
-      const intro = await generateIntroduction(category, progress.selectedVerb, progress.selectedVerbType);
+      const intro = await generateIntroduction(category, progress.selectedVerb, progress.selectedVerbType, undefined, progress.languagePair);
       setIntroduction(intro);
       setView('intro');
       setActiveForm('afirmativo');
       setActiveGroup('indicativo');
       setActivePerson('yo');
+      setActiveContext(intro.examples[0]?.context || intro.examples[0]?.tense || 'General');
     } catch (error) {
       console.error("Error generating introduction:", error);
     } finally {
@@ -124,6 +365,27 @@ export default function App() {
     }
   };
 
+  const handleGenerateContext = async () => {
+    if (!customContext.trim() || !currentCategory) return;
+    setIsGeneratingContext(true);
+    try {
+      const newIntro = await generateIntroduction(currentCategory, progress.selectedVerb, progress.selectedVerbType, customContext, progress.languagePair);
+      // Merge examples
+      setIntroduction(prev => {
+        if (!prev) return newIntro;
+        return {
+          ...prev,
+          examples: [...prev.examples, ...newIntro.examples]
+        };
+      });
+      setActiveContext(customContext);
+      setCustomContext('');
+    } catch (error) {
+      console.error("Error generating custom context:", error);
+    } finally {
+      setIsGeneratingContext(false);
+    }
+  };
   const startLesson = async () => {
     if (!currentCategory) return;
     
@@ -135,12 +397,13 @@ export default function App() {
     
     setLoading(true);
     try {
-      const newExercise = await generateExercise(currentCategory, randomTopic, progress.selectedVerb, progress.selectedVerbType);
+      const newExercise = await generateExercise(currentCategory, randomTopic, progress.selectedVerb, progress.selectedVerbType, activeContext, progress.languagePair);
       setExercise(newExercise);
       setView('lesson');
       setStep(1);
       setSelectedOption(null);
       setIsCorrect(null);
+      setShowMnemonic(false);
     } catch (error) {
       console.error("Error generating exercise:", error);
     } finally {
@@ -155,9 +418,13 @@ export default function App() {
     setIsCorrect(correct);
 
     if (!correct) {
-      setProgress(prev => ({ ...prev, hearts: Math.max(0, prev.hearts - 1) }));
+      updateProgress({ hearts: Math.max(0, progress.hearts - 1), streak: 0 });
     } else {
-      setProgress(prev => ({ ...prev, xp: prev.xp + 10 }));
+      updateProgress({ 
+        xp: progress.xp + 10, 
+        streak: progress.streak + 1,
+        gems: (progress.gems || 0) + 2
+      });
     }
   };
 
@@ -171,8 +438,10 @@ export default function App() {
     }
   };
 
+  const theme = CONTEXT_THEMES[activeContext] || CONTEXT_THEMES.General;
+
   return (
-    <div className="mobile-container bg-slate-50">
+    <div className={cn("mobile-container transition-colors duration-500", theme.bg)}>
       {/* Header */}
       <header className="px-6 py-4 border-b flex items-center justify-between sticky top-0 bg-white/80 backdrop-blur-md z-20 shadow-sm">
         <div className="flex items-center gap-4">
@@ -187,10 +456,51 @@ export default function App() {
           )}
           <div className="flex flex-col">
             <h1 className="font-black text-xl text-duo-green tracking-tight leading-none">GrammarFlow</h1>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">English Mastery</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{progress.languagePair.source.toUpperCase()} → {progress.languagePair.target.toUpperCase()}</span>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <div className="hidden sm:flex items-center gap-1.5 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
+            <Coins className="w-4 h-4 text-blue-500 fill-current" />
+            <span className="text-blue-600 font-black text-sm">{progress.gems || 0}</span>
+          </div>
+          <button 
+            onClick={() => setView('shop')}
+            className={cn("p-2 rounded-xl transition-colors", view === 'shop' ? "bg-duo-blue text-white" : "hover:bg-slate-100 text-slate-500")}
+          >
+            <ShoppingBag className="w-5 h-5" />
+          </button>
+          <button 
+            onClick={() => {
+              setView('leaderboard');
+              getLeaderboard().then(setLeaderboard);
+            }}
+            className={cn("p-2 rounded-xl transition-colors", view === 'leaderboard' ? "bg-duo-blue text-white" : "hover:bg-slate-100 text-slate-500")}
+          >
+            <Users className="w-5 h-5" />
+          </button>
+          {user ? (
+            <button 
+              onClick={handleLogout}
+              className="p-0.5 hover:bg-slate-100 rounded-full transition-colors border-2 border-slate-100"
+              title="Cerrar Sesión"
+            >
+              <img src={user.photoURL || ''} alt="User" className="w-8 h-8 rounded-full" />
+            </button>
+          ) : (
+            <button 
+              onClick={handleLogin}
+              className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-duo-blue font-black text-[10px] uppercase tracking-widest border-2 border-duo-blue/20"
+            >
+              Login
+            </button>
+          )}
+          <button 
+            onClick={() => setView('roadmap')}
+            className={cn("p-2 rounded-xl transition-colors", view === 'roadmap' ? "bg-duo-blue text-white" : "hover:bg-slate-100 text-slate-500")}
+          >
+            <Map className="w-5 h-5" />
+          </button>
           <div className="flex items-center gap-1.5 bg-red-50 px-3 py-1.5 rounded-full border border-red-100">
             <Heart className="w-4 h-4 text-duo-red fill-current" />
             <span className="text-duo-red font-black text-sm">{progress.hearts}</span>
@@ -199,11 +509,237 @@ export default function App() {
             <Zap className="w-4 h-4 text-duo-orange fill-current" />
             <span className="text-duo-orange font-black text-sm">{progress.xp}</span>
           </div>
+          {progress.streak > 0 && (
+            <div className="flex items-center gap-1.5 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-100 animate-bounce">
+              <Sparkles className="w-4 h-4 text-duo-orange fill-current" />
+              <span className="text-duo-orange font-black text-sm">{progress.streak}</span>
+            </div>
+          )}
         </div>
       </header>
 
       <main className="flex-1 overflow-y-auto p-6 pb-32">
         <AnimatePresence mode="wait">
+          {view === 'roadmap' && (
+            <motion.div
+              key="roadmap"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="max-w-md mx-auto space-y-12 pb-20"
+            >
+              <div className="text-center space-y-2">
+                <h2 className="text-3xl font-black text-slate-800">Tu Camino</h2>
+                <p className="text-slate-500 font-medium">Domina cada mundo para avanzar</p>
+              </div>
+
+              <div className="relative space-y-20">
+                {WORLDS.map((world, worldIdx) => (
+                  <div key={world.id} className="relative">
+                    {/* World Header */}
+                    <div className={cn("p-6 rounded-[2rem] text-white shadow-xl mb-10 relative overflow-hidden", world.color)}>
+                      <div className="relative z-10">
+                        <div className="flex items-center gap-3 mb-2">
+                          <i className={cn(world.icon, "text-2xl")}></i>
+                          <span className="font-black uppercase tracking-widest text-xs opacity-80">Mundo {worldIdx + 1}</span>
+                        </div>
+                        <h3 className="text-2xl font-black">{world.name}</h3>
+                      </div>
+                      <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 opacity-20">
+                        <i className={cn(world.icon, "text-9xl")}></i>
+                      </div>
+                    </div>
+
+                    {/* Path Nodes */}
+                    <div className="flex flex-col items-center gap-8">
+                      {world.modules.map((modId, modIdx) => {
+                        const mod = MODULES.find(m => m.id === modId);
+                        if (!mod) return null;
+                        return (
+                          <div key={modId} className="flex flex-col items-center gap-4">
+                            <div className="relative">
+                              <button
+                                onClick={() => setSelectedModule(modId)}
+                                className={cn(
+                                  "w-20 h-20 rounded-full flex items-center justify-center text-white shadow-lg transition-all active:scale-90 relative z-10",
+                                  selectedModule === modId ? "ring-8 ring-slate-100 scale-110" : "",
+                                  world.color
+                                )}
+                              >
+                                <i className={cn(mod.icon, "text-3xl")}></i>
+                              </button>
+                              {/* Progress Ring */}
+                              <svg className="absolute inset-0 -m-2 w-24 h-24 rotate-[-90deg]">
+                                <circle
+                                  cx="48"
+                                  cy="48"
+                                  r="44"
+                                  fill="transparent"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                  className="text-slate-100"
+                                />
+                                <circle
+                                  cx="48"
+                                  cy="48"
+                                  r="44"
+                                  fill="transparent"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                  strokeDasharray={2 * Math.PI * 44}
+                                  strokeDashoffset={2 * Math.PI * 44 * (1 - 0.4)} // Mock progress
+                                  className="text-white"
+                                />
+                              </svg>
+                            </div>
+                            <span className="font-black text-slate-700 text-sm">{mod.label}</span>
+
+                            {/* Categories for selected module */}
+                            <AnimatePresence>
+                              {selectedModule === modId && (
+                                <motion.div 
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  className="overflow-hidden w-full max-w-xs"
+                                >
+                                  <div className="grid grid-cols-1 gap-2 p-4 bg-white rounded-3xl border-2 border-slate-100 shadow-sm mt-4">
+                                    {mod.categories.map(catId => {
+                                      const cat = CATEGORIES.find(c => c.id === catId);
+                                      if (!cat) return null;
+                                      return (
+                                        <button
+                                          key={catId}
+                                          onClick={() => startCategory(catId)}
+                                          className="flex items-center gap-4 p-4 hover:bg-slate-50 rounded-2xl transition-colors text-left group"
+                                        >
+                                          <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform", world.color)}>
+                                            <i className={cat.icon}></i>
+                                          </div>
+                                          <div className="flex-1">
+                                            <h4 className="font-black text-slate-800 text-sm">{cat.label}</h4>
+                                            <div className="w-full h-1.5 bg-slate-100 rounded-full mt-1">
+                                              <div className={cn("h-full rounded-full", world.color)} style={{ width: '30%' }}></div>
+                                            </div>
+                                          </div>
+                                          <ArrowRight className="w-4 h-4 text-slate-300 group-hover:translate-x-1 transition-transform" />
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {view === 'leaderboard' && (
+            <motion.div
+              key="leaderboard"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="max-w-md mx-auto space-y-8"
+            >
+              <div className="text-center space-y-2">
+                <div className="inline-flex p-4 bg-amber-100 rounded-full mb-2">
+                  <Trophy className="w-10 h-10 text-amber-500" />
+                </div>
+                <h2 className="text-3xl font-black text-slate-800">Liga Global</h2>
+                <p className="text-slate-500 font-medium">Los mejores estudiantes de GrammarFlow</p>
+              </div>
+
+              <div className="bg-white rounded-[2rem] border-2 border-slate-100 shadow-sm overflow-hidden">
+                {leaderboard.length > 0 ? (
+                  <div className="divide-y divide-slate-50">
+                    {leaderboard.map((entry, i) => (
+                      <div key={entry.uid} className={cn("flex items-center gap-4 p-5", entry.uid === user?.uid ? "bg-blue-50/50" : "")}>
+                        <div className="w-8 font-black text-slate-400 text-lg">
+                          {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
+                        </div>
+                        <img src={entry.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${entry.uid}`} className="w-12 h-12 rounded-full border-2 border-slate-100" alt="" />
+                        <div className="flex-1">
+                          <h4 className="font-black text-slate-800">{entry.displayName}</h4>
+                          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nivel {entry.level}</span>
+                        </div>
+                        <div className="text-right">
+                          <div className="flex items-center gap-1 text-duo-orange font-black">
+                            <Zap className="w-4 h-4 fill-current" />
+                            {entry.xp}
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase">XP Total</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-10 text-center space-y-4">
+                    <div className="animate-spin w-8 h-8 border-4 border-duo-blue border-t-transparent rounded-full mx-auto"></div>
+                    <p className="text-slate-400 font-bold">Cargando clasificación...</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {view === 'shop' && (
+            <motion.div
+              key="shop"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="max-w-md mx-auto space-y-8"
+            >
+              <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-8 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden">
+                <div className="relative z-10">
+                  <h2 className="text-3xl font-black mb-2">Tienda de Gemas</h2>
+                  <p className="opacity-80 font-medium mb-6">Usa tus gemas para obtener ventajas exclusivas.</p>
+                  <div className="inline-flex items-center gap-3 bg-white/20 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/30">
+                    <Coins className="w-6 h-6 text-yellow-300 fill-current" />
+                    <span className="text-2xl font-black">{progress.gems || 0}</span>
+                  </div>
+                </div>
+                <ShoppingBag className="absolute -bottom-10 -right-10 w-60 h-60 text-white/10 rotate-12" />
+              </div>
+
+              <div className="space-y-4">
+                {SHOP_ITEMS.map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => buyItem(item)}
+                    disabled={(progress.gems || 0) < item.price || (item.id === 'pro_badge' && progress.isPro)}
+                    className={cn(
+                      "w-full flex items-center gap-6 p-6 bg-white rounded-[2rem] border-2 transition-all text-left group",
+                      (progress.gems || 0) >= item.price ? "border-slate-100 hover:border-duo-blue hover:shadow-lg" : "opacity-60 border-slate-50 grayscale"
+                    )}
+                  >
+                    <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      {item.icon}
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-black text-slate-800 text-lg">{item.name}</h4>
+                      <p className="text-slate-500 text-sm font-medium leading-tight">{item.description}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="flex items-center gap-1.5 bg-blue-50 px-4 py-2 rounded-xl border border-blue-100">
+                        <Coins className="w-4 h-4 text-blue-500 fill-current" />
+                        <span className="text-blue-600 font-black">{item.price}</span>
+                      </div>
+                      {item.id === 'pro_badge' && progress.isPro && (
+                        <span className="text-[10px] font-black text-duo-green uppercase block mt-1">Adquirido</span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
           {view === 'home' && (
             <motion.div 
               key="home"
@@ -251,14 +787,14 @@ export default function App() {
                         <div className="flex flex-wrap gap-1">
                           {VERB_BANK.regulares.map(v => (
                             <button
-                              key={v.english}
-                              onClick={() => setProgress(prev => ({ ...prev, selectedVerb: v.spanish, selectedVerbType: 'regulares' }))}
+                              key={v.target}
+                              onClick={() => setProgress(prev => ({ ...prev, selectedVerb: v.source, selectedVerbType: 'regulares' }))}
                               className={cn(
                                 "px-2 py-1 rounded-lg text-[10px] font-bold border transition-all",
-                                progress.selectedVerb === v.spanish ? "bg-duo-blue border-duo-blue text-white" : "bg-slate-50 border-slate-100 text-slate-500 hover:border-slate-200"
+                                progress.selectedVerb === v.source ? "bg-duo-blue border-duo-blue text-white" : "bg-slate-50 border-slate-100 text-slate-500 hover:border-slate-200"
                               )}
                             >
-                              {v.spanish}
+                              {v.source}
                             </button>
                           ))}
                         </div>
@@ -268,14 +804,14 @@ export default function App() {
                         <div className="flex flex-wrap gap-1">
                           {VERB_BANK.irregulares.map(v => (
                             <button
-                              key={v.english}
-                              onClick={() => setProgress(prev => ({ ...prev, selectedVerb: v.spanish, selectedVerbType: 'irregulares' }))}
+                              key={v.target}
+                              onClick={() => setProgress(prev => ({ ...prev, selectedVerb: v.source, selectedVerbType: 'irregulares' }))}
                               className={cn(
                                 "px-2 py-1 rounded-lg text-[10px] font-bold border transition-all",
-                                progress.selectedVerb === v.spanish ? "bg-duo-blue border-duo-blue text-white" : "bg-slate-50 border-slate-100 text-slate-500 hover:border-slate-200"
+                                progress.selectedVerb === v.source ? "bg-duo-blue border-duo-blue text-white" : "bg-slate-50 border-slate-100 text-slate-500 hover:border-slate-200"
                               )}
                             >
-                              {v.spanish}
+                              {v.source}
                             </button>
                           ))}
                         </div>
@@ -322,28 +858,68 @@ export default function App() {
               </div>
 
               <div className="grid grid-cols-1 gap-4">
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] px-2">Categorías de Estudio</h3>
-                {CATEGORIES.map((cat) => (
-                  <button
-                    key={cat.id}
-                    onClick={() => startCategory(cat.id)}
-                    disabled={loading}
-                    className="flex items-center gap-5 p-6 rounded-[1.5rem] bg-white border-2 border-slate-100 hover:border-duo-blue hover:shadow-xl hover:shadow-blue-50 transition-all text-left group relative overflow-hidden"
-                  >
-                    <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center group-hover:bg-blue-50 transition-colors">
-                      <i className={cn(cat.icon, "text-2xl text-slate-400 group-hover:text-duo-blue transition-colors")}></i>
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-black text-lg text-slate-800">{cat.label}</h3>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                        {cat.topics.length} Temas • {cat.id.includes('tiempos') ? 'Gramática Base' : 'Vocabulario'}
-                      </p>
-                    </div>
-                    <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-duo-blue group-hover:text-white transition-all">
-                      <ArrowRight className="w-5 h-5" />
-                    </div>
-                  </button>
-                ))}
+                <div className="flex items-center justify-between px-2">
+                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                    {selectedModule ? `Módulo: ${MODULES.find(m => m.id === selectedModule)?.label}` : 'Módulos de Aprendizaje'}
+                  </h3>
+                  {selectedModule && (
+                    <button 
+                      onClick={() => setSelectedModule(null)}
+                      className="text-[10px] font-black text-duo-blue uppercase tracking-wider hover:underline"
+                    >
+                      Ver todos los módulos
+                    </button>
+                  )}
+                </div>
+
+                {!selectedModule ? (
+                  <div className="grid grid-cols-1 gap-4">
+                    {MODULES.map((module) => (
+                      <button
+                        key={module.id}
+                        onClick={() => setSelectedModule(module.id)}
+                        className="flex items-center gap-5 p-8 rounded-[2rem] bg-white border-2 border-slate-100 hover:border-duo-blue hover:shadow-xl hover:shadow-blue-50 transition-all text-left group relative overflow-hidden"
+                      >
+                        <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center group-hover:bg-blue-50 transition-colors">
+                          <i className={cn(module.icon, "text-3xl text-slate-400 group-hover:text-duo-blue transition-colors")}></i>
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-black text-xl text-slate-800">{module.label}</h3>
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                            {module.categories.length} Categorías • {module.id === 'fundamentos' ? 'Básico' : module.id === 'tiempos' ? 'Intermedio' : 'Avanzado'}
+                          </p>
+                        </div>
+                        <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-duo-blue group-hover:text-white transition-all">
+                          <ArrowRight className="w-6 h-6" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3">
+                    {CATEGORIES.filter(cat => MODULES.find(m => m.id === selectedModule)?.categories.includes(cat.id)).map((cat) => (
+                      <button
+                        key={cat.id}
+                        onClick={() => startCategory(cat.id)}
+                        disabled={loading}
+                        className="flex items-center gap-4 p-5 rounded-[1.5rem] bg-white border-2 border-slate-100 hover:border-duo-blue hover:shadow-lg hover:shadow-blue-50 transition-all text-left group relative overflow-hidden"
+                      >
+                        <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center group-hover:bg-blue-50 transition-colors">
+                          <i className={cn(cat.icon, "text-xl text-slate-400 group-hover:text-duo-blue transition-colors")}></i>
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-black text-base text-slate-800">{cat.label}</h3>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            {cat.topics.length} Temas
+                          </p>
+                        </div>
+                        <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-duo-blue group-hover:text-white transition-all">
+                          <ArrowRight className="w-4 h-4" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
@@ -372,21 +948,111 @@ export default function App() {
                 </p>
               </div>
 
-              {introduction.list && (
+              {((introduction.list && introduction.list.length > 0) || (introduction.concepts && introduction.concepts.length > 0)) && (
                 <div className="space-y-3">
                   <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Conceptos Clave</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {introduction.list.map(item => (
-                      <span key={item} className="px-4 py-2 bg-white rounded-xl text-xs font-black text-slate-600 border-2 border-slate-100 shadow-sm">
-                        {item}
-                      </span>
-                    ))}
+                  <div className="flex flex-wrap gap-2 relative">
+                    {introduction.concepts ? (
+                      introduction.concepts.map(concept => (
+                        <div key={concept.term} className="relative group/concept">
+                          <motion.button
+                            whileHover={{ scale: 1.05, y: -2 }}
+                            onMouseEnter={() => setActiveConcept(concept)}
+                            onMouseLeave={() => setActiveConcept(null)}
+                            onClick={() => setActiveConcept(activeConcept?.term === concept.term ? null : concept)}
+                            className={cn(
+                              "px-4 py-2 bg-white rounded-xl text-xs font-black border-2 transition-all shadow-sm",
+                              activeConcept?.term === concept.term 
+                                ? "border-duo-blue text-duo-blue bg-blue-50" 
+                                : "border-slate-100 text-slate-600 hover:border-slate-200"
+                            )}
+                          >
+                            {concept.term}
+                          </motion.button>
+                          
+                          <AnimatePresence>
+                            {activeConcept?.term === concept.term && (
+                              <motion.div
+                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                className="absolute z-50 bottom-full left-0 mb-3 w-64 bg-white p-4 rounded-2xl shadow-xl border-2 border-slate-100 pointer-events-none md:pointer-events-auto"
+                              >
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-duo-blue" />
+                                    <span className="text-[10px] font-black text-duo-blue uppercase tracking-wider">¿Qué es?</span>
+                                  </div>
+                                  <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                                    {concept.definition}
+                                  </p>
+                                  <div className="pt-2 border-t border-slate-50">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <div className="w-1.5 h-1.5 rounded-full bg-duo-orange" />
+                                      <span className="text-[10px] font-black text-duo-orange uppercase tracking-wider">¿Cómo se usa?</span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 italic leading-relaxed">
+                                      {concept.usage}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="absolute -bottom-2 left-6 w-4 h-4 bg-white border-r-2 border-b-2 border-slate-100 rotate-45" />
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      ))
+                    ) : (
+                      introduction.list?.map(item => (
+                        <span key={item} className="px-4 py-2 bg-white rounded-xl text-xs font-black text-slate-600 border-2 border-slate-100 shadow-sm">
+                          {item}
+                        </span>
+                      ))
+                    )}
                   </div>
                 </div>
               )}
 
               <div className="space-y-6">
                 <div className="flex flex-col gap-4 px-2">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Contexto / Tópico</h3>
+                      <div className="flex gap-1">
+                        <input 
+                          type="text"
+                          placeholder="Nuevo contexto..."
+                          value={customContext}
+                          onChange={(e) => setCustomContext(e.target.value)}
+                          className="text-[10px] px-2 py-1 bg-slate-100 rounded-lg border-none outline-none focus:ring-1 focus:ring-duo-blue w-24"
+                        />
+                        <button 
+                          onClick={handleGenerateContext}
+                          disabled={isGeneratingContext || !customContext.trim()}
+                          className="p-1 bg-duo-blue text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 bg-slate-50 p-1.5 rounded-2xl">
+                      {Array.from(new Set(introduction.examples.map(ex => ex.context || ex.tense))).map((ctx) => (
+                        <button
+                          key={ctx}
+                          onClick={() => setActiveContext(ctx)}
+                          className={cn(
+                            "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all border-2",
+                            activeContext === ctx 
+                              ? "bg-white border-duo-blue text-duo-blue shadow-sm" 
+                              : "bg-transparent border-transparent text-slate-400 hover:bg-white/50"
+                          )}
+                        >
+                          {ctx}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="flex items-center justify-between">
                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Modo</h3>
                     <div className="flex bg-slate-200/50 p-1 rounded-xl">
@@ -449,45 +1115,45 @@ export default function App() {
                 </div>
 
                 <div className="space-y-4">
-                  {introduction.examples.filter(ex => ex.group === activeGroup).length === 0 && (
+                  {introduction.examples.filter(ex => ex.group === activeGroup && (ex.context === activeContext || ex.tense === activeContext)).length === 0 && (
                     <div className="bg-white p-12 rounded-[2rem] border-2 border-dashed border-slate-200 text-center space-y-4">
                       <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto">
                         <Info className="w-8 h-8 text-slate-300" />
                       </div>
                       <div className="space-y-1">
                         <p className="font-bold text-slate-400">No hay ejemplos para este modo</p>
-                        <p className="text-xs text-slate-300">Cambia a "Indicativo" para ver los ejemplos base.</p>
+                        <p className="text-xs text-slate-300">Cambia a "Indicativo" o selecciona otro contexto.</p>
                       </div>
                     </div>
                   )}
                   {introduction.examples
-                    .filter(ex => ex.group === activeGroup)
+                    .filter(ex => ex.group === activeGroup && (ex.context === activeContext || ex.tense === activeContext))
                     .map((ex, i) => {
                       const personData = ex.persons.find(p => p.id === activePerson) || ex.persons[0];
                       const currentForm = personData.forms.find(f => f.type === activeForm) || personData.forms[0];
                       
                       const renderSentence = (parts: SentencePart[], isEnglish: boolean) => (
-                        <div className="flex flex-wrap items-baseline gap-x-0.5">
-                          {parts.map((part, idx) => (
-                            <motion.span
-                              key={idx}
-                              whileHover={{ scale: 1.05, y: -2 }}
-                              className={cn(
-                                "relative cursor-help px-0.5 rounded transition-colors group/part",
-                                part.type === 'person' && "text-slate-700 font-bold",
-                                part.type === 'auxiliary' && "text-amber-600 font-black bg-amber-50",
-                                part.type === 'verb' && (isEnglish ? "text-duo-blue font-black" : "text-slate-700 font-bold"),
-                                part.type === 'suffix' && "text-rose-600 font-black bg-rose-50 underline decoration-rose-200 decoration-2 underline-offset-4",
-                                part.type === 'other' && "text-slate-500"
-                              )}
-                            >
-                              {part.text}
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 text-white text-[9px] font-bold rounded opacity-0 group-hover/part:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-50 shadow-xl">
-                                {part.label}
-                                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
-                              </div>
-                            </motion.span>
-                          ))}
+                        <div className="flex flex-wrap items-baseline gap-x-1 gap-y-2">
+                          {parts.map((part, idx) => {
+                            const colors = GRAMMAR_COLORS[part.type] || GRAMMAR_COLORS.other;
+                            return (
+                              <motion.button
+                                key={idx}
+                                whileHover={{ scale: 1.05, y: -2 }}
+                                onClick={() => setActivePartExplanation(part.explanation || part.label)}
+                                className={cn(
+                                  "relative px-2 py-1 rounded-xl transition-all border-2 text-sm font-bold",
+                                  colors.bg,
+                                  colors.text,
+                                  colors.border,
+                                  "hover:shadow-md active:scale-95"
+                                )}
+                              >
+                                {part.text}
+                                <div className="absolute -top-2 -right-1 w-2 h-2 rounded-full border border-white shadow-sm" style={{ backgroundColor: 'currentColor' }} />
+                              </motion.button>
+                            );
+                          })}
                         </div>
                       );
 
@@ -503,9 +1169,9 @@ export default function App() {
                           <div className="space-y-6">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                               <div className="flex-1">
-                                <span className="text-[10px] font-bold text-slate-300 uppercase block mb-2">Español</span>
+                                <span className="text-[10px] font-bold text-slate-300 uppercase block mb-2">{progress.languagePair.source.toUpperCase()}</span>
                                 <div className="text-xl">
-                                  {renderSentence(currentForm.spanish, false)}
+                                  {renderSentence(currentForm.source, false)}
                                 </div>
                               </div>
                               
@@ -514,12 +1180,29 @@ export default function App() {
                               </div>
 
                               <div className="flex-1 md:text-right">
-                                <span className="text-[10px] font-bold text-duo-blue uppercase block mb-2">English</span>
+                                <div className="flex items-center justify-between md:justify-end gap-2 mb-2">
+                                  <span className="text-[10px] font-bold text-duo-blue uppercase block">{progress.languagePair.target.toUpperCase()}</span>
+                                  <button 
+                                    onClick={() => playAudio(currentForm.target.map(p => p.text).join(''))}
+                                    className="p-1.5 bg-blue-50 text-duo-blue rounded-lg hover:bg-blue-100 transition-colors"
+                                  >
+                                    <Play className={cn("w-3 h-3 fill-current", isPlayingAudio && "animate-pulse")} />
+                                  </button>
+                                </div>
                                 <div className="text-xl md:flex md:justify-end">
-                                  {renderSentence(currentForm.english, true)}
+                                  {renderSentence(currentForm.target, true)}
                                 </div>
                               </div>
                             </div>
+
+                            {currentForm.target.some(p => p.mnemonic) && (
+                              <div className="mt-4 bg-amber-50 p-4 rounded-2xl border-2 border-amber-100 flex items-start gap-3">
+                                <Brain className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                                <p className="text-[11px] font-medium text-amber-800 italic">
+                                  {currentForm.target.find(p => p.mnemonic)?.mnemonic}
+                                </p>
+                              </div>
+                            )}
 
                             <div className="mt-4 pt-4 border-t border-slate-50">
                               <div className="flex items-start gap-3 bg-slate-50/50 p-4 rounded-2xl">
@@ -571,8 +1254,24 @@ export default function App() {
                     <h2 className="text-lg font-black text-slate-800">
                       {step === 1 ? 'Identifica el Tiempo' : 'Traducción Paralela'}
                     </h2>
+                    {exercise.difficulty && (
+                      <span className={cn(
+                        "px-2 py-0.5 rounded text-[8px] font-black uppercase",
+                        exercise.difficulty === 'easy' ? "bg-green-100 text-green-700" :
+                        exercise.difficulty === 'medium' ? "bg-amber-100 text-amber-700" :
+                        "bg-rose-100 text-rose-700"
+                      )}>
+                        {exercise.difficulty}
+                      </span>
+                    )}
                   </div>
                   <div className="flex gap-1">
+                    <button 
+                      onClick={() => setShowHelp(!showHelp)}
+                      className="p-1.5 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200 transition-colors"
+                    >
+                      <Lightbulb className="w-4 h-4" />
+                    </button>
                     {getBadges(exercise.topic).map(badge => (
                       <span key={badge} className="px-2 py-0.5 bg-blue-50 rounded text-[9px] font-black text-duo-blue uppercase">
                         {badge}
@@ -580,13 +1279,27 @@ export default function App() {
                     ))}
                   </div>
                 </div>
+
+                {showHelp && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-amber-50 p-4 rounded-2xl border-2 border-amber-100 text-xs font-medium text-amber-800 leading-relaxed"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Info className="w-3 h-3" />
+                      <span className="font-black uppercase tracking-widest text-[9px]">Recordatorio Gramatical</span>
+                    </div>
+                    {exercise.grammarExplanation}
+                  </motion.div>
+                )}
                 
                 <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-xl shadow-slate-100 relative">
                   <div className="text-lg leading-relaxed">
                     {step === 1 ? (
                       <div className="space-y-6">
                         <div className="p-6 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 text-center">
-                          <p className="text-2xl font-black text-slate-800 italic">"{exercise.spanishSentence}"</p>
+                          <p className="text-2xl font-black text-slate-800 italic">"{exercise.sourceSentence}"</p>
                         </div>
                         <p className="text-center text-slate-500 font-medium">
                           ¿Qué tiempo verbal se utiliza en esta frase?
@@ -596,12 +1309,12 @@ export default function App() {
                       <div className="space-y-6">
                         <div className="space-y-4">
                           <div className="p-5 bg-slate-50 rounded-2xl border-2 border-slate-100">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Base Española</span>
-                            <p className="text-xl font-bold text-slate-700">{exercise.spanishSentence}</p>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Base {progress.languagePair.source.toUpperCase()}</span>
+                            <p className="text-xl font-bold text-slate-700">{exercise.sourceSentence}</p>
                           </div>
                           <div className="p-5 bg-blue-50 rounded-2xl border-2 border-duo-blue/20">
-                            <span className="text-[10px] font-black text-duo-blue uppercase tracking-widest block mb-2">Equivalente Inglés</span>
-                            <p className="text-xl font-black text-duo-blue">{exercise.englishSentence}</p>
+                            <span className="text-[10px] font-black text-duo-blue uppercase tracking-widest block mb-2">Equivalente {progress.languagePair.target.toUpperCase()}</span>
+                            <p className="text-xl font-black text-duo-blue">{exercise.targetSentence}</p>
                           </div>
                         </div>
                       </div>
@@ -628,15 +1341,31 @@ export default function App() {
                   )}
 
                   {step === 2 && (
-                    <div className="mt-8 p-6 bg-blue-50 rounded-[1.5rem] border-2 border-duo-blue/10 flex gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shrink-0 shadow-sm">
-                        <GraduationCap className="w-6 h-6 text-duo-blue" />
-                      </div>
-                      <div>
-                        <span className="font-black text-duo-blue text-xs uppercase tracking-widest block mb-1">Análisis Gramatical Profundo</span>
-                        <p className="text-slate-700 text-sm font-medium leading-relaxed">
-                          {exercise.grammarExplanation}
-                        </p>
+                    <div className="space-y-4 mt-8">
+                      {exercise.mnemonic && (
+                        <div className="p-6 bg-amber-50 rounded-[1.5rem] border-2 border-amber-100 flex gap-4">
+                          <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shrink-0 shadow-sm">
+                            <Brain className="w-6 h-6 text-amber-500" />
+                          </div>
+                          <div>
+                            <span className="font-black text-amber-600 text-xs uppercase tracking-widest block mb-1">Tip Nemotécnico</span>
+                            <p className="text-slate-700 text-sm font-medium leading-relaxed italic">
+                              {exercise.mnemonic}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="p-6 bg-blue-50 rounded-[1.5rem] border-2 border-duo-blue/10 flex gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shrink-0 shadow-sm">
+                          <GraduationCap className="w-6 h-6 text-duo-blue" />
+                        </div>
+                        <div>
+                          <span className="font-black text-duo-blue text-xs uppercase tracking-widest block mb-1">Análisis Gramatical Profundo</span>
+                          <p className="text-slate-700 text-sm font-medium leading-relaxed">
+                            {exercise.grammarExplanation}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -664,9 +1393,16 @@ export default function App() {
                       </div>
                     )}
                     {isCorrect === false && (
-                      <div className="flex items-center gap-3 text-duo-red font-black bg-red-50 p-4 rounded-2xl border-2 border-red-100">
-                        <XCircle className="w-6 h-6" />
-                        <span>Casi... La respuesta era: {exercise.correctAnswer}</span>
+                      <div className="flex flex-col gap-2 bg-red-50 p-4 rounded-2xl border-2 border-red-100">
+                        <div className="flex items-center gap-3 text-duo-red font-black">
+                          <XCircle className="w-6 h-6" />
+                          <span>Casi... La respuesta era: {exercise.correctAnswer}</span>
+                        </div>
+                        {exercise.wrongAnswerExplanation && (
+                          <p className="text-[11px] text-red-600 font-medium pl-9 italic">
+                            {exercise.wrongAnswerExplanation}
+                          </p>
+                        )}
                       </div>
                     )}
                     <button
@@ -703,14 +1439,18 @@ export default function App() {
                 <p className="text-slate-500 text-lg font-medium">Tu base gramatical es cada vez más sólida.</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 w-full">
-                <div className="bg-white p-6 rounded-[1.5rem] border-2 border-slate-100 shadow-sm">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">XP Ganado</span>
-                  <p className="text-3xl font-black text-duo-orange">+10</p>
+              <div className="grid grid-cols-3 gap-3 w-full">
+                <div className="bg-white p-4 rounded-[1.5rem] border-2 border-slate-100 shadow-sm">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">XP Ganado</span>
+                  <p className="text-xl font-black text-duo-orange">+10</p>
                 </div>
-                <div className="bg-white p-6 rounded-[1.5rem] border-2 border-slate-100 shadow-sm">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Precisión</span>
-                  <p className="text-3xl font-black text-duo-green">100%</p>
+                <div className="bg-white p-4 rounded-[1.5rem] border-2 border-slate-100 shadow-sm">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Gemas</span>
+                  <p className="text-xl font-black text-blue-500">+2</p>
+                </div>
+                <div className="bg-white p-4 rounded-[1.5rem] border-2 border-slate-100 shadow-sm">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Precisión</span>
+                  <p className="text-xl font-black text-duo-green">100%</p>
                 </div>
               </div>
 
@@ -734,6 +1474,40 @@ export default function App() {
           <p className="mt-6 font-black text-duo-blue animate-pulse text-center px-10 leading-tight">
             {view === 'home' ? 'Diseñando tu mapa gramatical...' : 'Preparando el siguiente desafío...'}
           </p>
+        </div>
+      )}
+
+      {activePartExplanation && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center p-4">
+          <motion.div 
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl space-y-6"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+                  <GraduationCap className="w-6 h-6 text-duo-blue" />
+                </div>
+                <h4 className="font-black text-slate-800 uppercase tracking-widest text-xs">Análisis de Estructura</h4>
+              </div>
+              <button 
+                onClick={() => setActivePartExplanation(null)}
+                className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+              >
+                <XCircle className="w-6 h-6 text-slate-300" />
+              </button>
+            </div>
+            <p className="text-lg text-slate-700 font-medium leading-relaxed">
+              {activePartExplanation}
+            </p>
+            <button 
+              onClick={() => setActivePartExplanation(null)}
+              className="w-full py-4 bg-duo-blue text-white rounded-2xl font-black text-sm hover:bg-blue-600 transition-colors shadow-lg shadow-blue-100"
+            >
+              ENTENDIDO
+            </button>
+          </motion.div>
         </div>
       )}
     </div>

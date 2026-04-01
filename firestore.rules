@@ -1,0 +1,106 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required)
+    //   - displayName: string (required)
+    //   - email: string (required, private)
+    //   - photoURL: string (optional)
+    //   - level: number (required)
+    //   - xp: number (required)
+    //   - hearts: number (required)
+    //   - streak: number (required)
+    //   - gems: number (required)
+    //   - isPro: boolean (required)
+    //   - completedTopics: list (required)
+    //   - badges: list (required)
+    //   - lastActive: string (optional)
+    //
+    // Collection: leaderboard
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required)
+    //   - displayName: string (required)
+    //   - photoURL: string (optional)
+    //   - xp: number (required)
+    //   - level: number (required)
+    //
+    // Collection: badges, worlds
+    // Document ID: {id}
+    // Fields: Global definitions (read-only for users)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isPro == true || 
+         request.auth.token.email == "ian.emanuel.caguilar@gmail.com");
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'email', 'level', 'xp', 'hearts', 'streak', 'gems', 'isPro', 'completedTopics', 'badges']) &&
+             data.uid is string && data.uid.size() > 0 &&
+             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
+             data.email is string && data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") &&
+             data.level is number && data.level >= 0 &&
+             data.xp is number && data.xp >= 0 &&
+             data.hearts is number && data.hearts >= 0 && data.hearts <= 5 &&
+             data.streak is number && data.streak >= 0 &&
+             data.gems is number && data.gems >= 0 &&
+             data.isPro is bool &&
+             data.completedTopics is list &&
+             data.badges is list;
+    }
+
+    function isValidLeaderboard(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'xp', 'level']) &&
+             data.uid == request.auth.uid &&
+             data.displayName is string && data.displayName.size() < 100 &&
+             data.xp is number &&
+             data.level is number;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.isPro == false;
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                    (request.resource.data.isPro == resource.data.isPro || isAdmin());
+    }
+
+    match /leaderboard/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId) && isValidLeaderboard(request.resource.data);
+    }
+
+    match /badges/{badgeId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /worlds/{worldId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}

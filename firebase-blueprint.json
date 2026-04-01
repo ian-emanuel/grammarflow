@@ -1,0 +1,78 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and progress",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "level": { "type": "number" },
+        "xp": { "type": "number" },
+        "hearts": { "type": "number" },
+        "streak": { "type": "number" },
+        "gems": { "type": "number" },
+        "isPro": { "type": "boolean" },
+        "completedTopics": { "type": "array", "items": { "type": "string" } },
+        "badges": { "type": "array", "items": { "type": "string" } },
+        "lastActive": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "email"]
+    },
+    "Badge": {
+      "title": "Badge",
+      "description": "Unlockable achievement",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "icon": { "type": "string" },
+        "requirement": { "type": "string" }
+      }
+    },
+    "World": {
+      "title": "World",
+      "description": "A learning world/map",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "levels": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "LeaderboardEntry": {
+      "title": "LeaderboardEntry",
+      "description": "Entry for the global leaderboard",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "xp": { "type": "number" },
+        "level": { "type": "number" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "Individual user data"
+    },
+    "/leaderboard/{uid}": {
+      "schema": "LeaderboardEntry",
+      "description": "Public leaderboard data"
+    },
+    "/badges/{badgeId}": {
+      "schema": "Badge",
+      "description": "Global badge definitions"
+    },
+    "/worlds/{worldId}": {
+      "schema": "World",
+      "description": "Global world definitions"
+    }
+  }
+}
