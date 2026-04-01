@@ -85,6 +85,8 @@ export default function App() {
   const [step, setStep] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
 
+  const [activeForm, setActiveForm] = useState<'afirmativo' | 'negativo' | 'pregunta'>('afirmativo');
+
   const startCategory = async (category: Category) => {
     setCurrentCategory(category);
     setLoading(true);
@@ -92,6 +94,7 @@ export default function App() {
       const intro = await generateIntroduction(category, progress.selectedVerb, progress.selectedVerbType);
       setIntroduction(intro);
       setView('intro');
+      setActiveForm('afirmativo');
     } catch (error) {
       console.error("Error generating introduction:", error);
     } finally {
@@ -312,43 +315,66 @@ export default function App() {
                 </div>
               )}
 
-              <div className="space-y-4">
-                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Mapa de Conjugación</h3>
-                <div className="space-y-3">
-                  {introduction.examples.map((ex, i) => (
-                    <div key={i} className="bg-white p-5 rounded-2xl border-2 border-slate-100 shadow-sm hover:border-duo-blue transition-colors group">
-                      <div className="flex flex-wrap gap-1.5 mb-3">
-                        {getBadges(ex.explanation).map(badge => (
-                          <span key={badge} className="px-2 py-0.5 bg-slate-50 rounded text-[9px] font-black text-slate-400 uppercase tracking-tighter group-hover:bg-blue-50 group-hover:text-duo-blue transition-colors">
-                            {badge}
+              <div className="space-y-6">
+                <div className="flex items-center justify-between px-2">
+                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mapa de Conjugación</h3>
+                  <div className="flex bg-slate-200/50 p-1 rounded-xl">
+                    {(['afirmativo', 'negativo', 'pregunta'] as const).map((form) => (
+                      <button
+                        key={form}
+                        onClick={() => setActiveForm(form)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all",
+                          activeForm === form 
+                            ? "bg-white text-duo-blue shadow-sm" 
+                            : "text-slate-500 hover:text-slate-700"
+                        )}
+                      >
+                        {form}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {introduction.examples.map((ex, i) => {
+                    const currentForm = ex.forms.find(f => f.type === activeForm) || ex.forms[0];
+                    return (
+                      <div key={i} className="bg-white p-6 rounded-[2rem] border-2 border-slate-100 shadow-sm hover:border-duo-blue transition-all group">
+                        <div className="flex items-center gap-2 mb-4">
+                          <span className="px-3 py-1 bg-blue-50 rounded-lg text-[10px] font-black text-duo-blue uppercase tracking-wider">
+                            {ex.tense}
                           </span>
-                        ))}
-                      </div>
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="flex-1">
-                            <span className="text-xs font-bold text-slate-300 uppercase block mb-1">Español</span>
-                            <span className="text-lg font-bold text-slate-700">{ex.spanish}</span>
+                          <div className="h-px flex-1 bg-slate-50" />
+                        </div>
+
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex-1">
+                              <span className="text-[10px] font-bold text-slate-300 uppercase block mb-1">Español</span>
+                              <span className="text-xl font-bold text-slate-700">{currentForm.spanish}</span>
+                            </div>
+                            <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center shrink-0">
+                              <ArrowRight className="w-5 h-5 text-slate-300" />
+                            </div>
+                            <div className="flex-1 text-right">
+                              <span className="text-[10px] font-bold text-duo-blue uppercase block mb-1">English</span>
+                              <span className="text-xl font-black text-duo-blue">{currentForm.english}</span>
+                            </div>
                           </div>
-                          <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center shrink-0">
-                            <ArrowRight className="w-4 h-4 text-slate-300" />
-                          </div>
-                          <div className="flex-1 text-right">
-                            <span className="text-xs font-bold text-duo-blue uppercase block mb-1">English</span>
-                            <span className="text-lg font-black text-duo-blue">{ex.english}</span>
+
+                          <div className="mt-4 pt-4 border-t border-slate-50">
+                            <div className="flex items-start gap-3 bg-slate-50/50 p-4 rounded-2xl">
+                              <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                              <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+                                {ex.explanation}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                        <div className="mt-3 pt-3 border-t border-slate-50">
-                          <div className="flex items-start gap-2">
-                            <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                            <p className="text-[11px] text-slate-500 font-medium leading-relaxed italic">
-                              {ex.explanation}
-                            </p>
-                          </div>
-                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

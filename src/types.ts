@@ -35,11 +35,15 @@ export interface Introduction {
   title: string;
   definition: string;
   examples: {
-    spanish: string;
-    english: string;
+    tense: string;
     explanation: string;
+    forms: {
+      type: 'afirmativo' | 'negativo' | 'pregunta';
+      spanish: string;
+      english: string;
+    }[];
   }[];
-  list?: string[]; // For things like prepositions list
+  list?: string[];
 }
 
 export interface Exercise {

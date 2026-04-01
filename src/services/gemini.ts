@@ -33,9 +33,25 @@ export async function generateIntroduction(category: Category, selectedVerb?: st
       "list": ["Lista de auxiliares o palabras clave"],
       "examples": [
         {
-          "spanish": "Yo [verbo] / Yo no [verbo] / ¿[verbo] yo?",
-          "english": "I [verb] / I [aux] not [verb] / [Aux] I [verb]?",
-          "explanation": "Análisis gramatical profundo: Identifica el tiempo, el modo, el uso del auxiliar en ambos idiomas y la estructura (ej: Sujeto + Auxiliar + Verbo en participio)."
+          "tense": "Nombre del tiempo (ej: Presente)",
+          "explanation": "Análisis gramatical profundo: Identifica el tiempo, el modo, el uso del auxiliar en ambos idiomas y la estructura (ej: Sujeto + Auxiliar + Verbo en participio).",
+          "forms": [
+            {
+              "type": "afirmativo",
+              "spanish": "Yo [verbo]",
+              "english": "I [verb]"
+            },
+            {
+              "type": "negativo",
+              "spanish": "Yo no [verbo]",
+              "english": "I [aux] not [verb]"
+            },
+            {
+              "type": "pregunta",
+              "spanish": "¿[verbo] yo?",
+              "english": "[Aux] I [verb]?"
+            }
+          ]
         }
       ]
     }`;
@@ -56,11 +72,22 @@ export async function generateIntroduction(category: Category, selectedVerb?: st
             items: {
               type: Type.OBJECT,
               properties: {
-                spanish: { type: Type.STRING },
-                english: { type: Type.STRING },
-                explanation: { type: Type.STRING }
+                tense: { type: Type.STRING },
+                explanation: { type: Type.STRING },
+                forms: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      type: { type: Type.STRING, enum: ["afirmativo", "negativo", "pregunta"] },
+                      spanish: { type: Type.STRING },
+                      english: { type: Type.STRING }
+                    },
+                    required: ["type", "spanish", "english"]
+                  }
+                }
               },
-              required: ["spanish", "english", "explanation"]
+              required: ["tense", "explanation", "forms"]
             }
           }
         },
