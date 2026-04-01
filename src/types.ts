@@ -4,6 +4,7 @@ export type Category =
   | 'tiempos_continuos' 
   | 'preposiciones' 
   | 'adverbios' 
+  | 'pronombres'
   | 'otros';
 
 export type VerbType = 'regulares' | 'irregulares' | 'cualquiera';
@@ -29,18 +30,35 @@ export type GrammarTopic =
   | 'futuro_idiomatico_continuo'
   | 'condicional_continuo'
   | 'preposiciones' 
-  | 'adverbios';
+  | 'adverbios'
+  | 'pronombres_personales'
+  | 'posesivos'
+  | 'demostrativos'
+  | 'reflexivos';
+
+export type PersonId = 'yo' | 'tu' | 'el_ella' | 'nosotros' | 'uds' | 'ellos';
+
+export interface SentencePart {
+  text: string;
+  type: 'person' | 'auxiliary' | 'verb' | 'suffix' | 'other';
+  label: string; // e.g., "Sujeto", "Auxiliar", "Verbo Principal"
+}
 
 export interface Introduction {
   title: string;
   definition: string;
   examples: {
     tense: string;
+    group: 'indicativo' | 'subjuntivo';
     explanation: string;
-    forms: {
-      type: 'afirmativo' | 'negativo' | 'pregunta';
-      spanish: string;
-      english: string;
+    persons: {
+      id: PersonId;
+      label: string;
+      forms: {
+        type: 'afirmativo' | 'negativo' | 'pregunta';
+        spanish: SentencePart[];
+        english: SentencePart[];
+      }[];
     }[];
   }[];
   list?: string[];

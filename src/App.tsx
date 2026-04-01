@@ -24,7 +24,8 @@ import {
   Lightbulb
 } from 'lucide-react';
 import { generateExercise, generateIntroduction } from './services/gemini';
-import { Exercise, GrammarTopic, UserProgress, Introduction, Category, VerbType } from './types';
+import { Exercise, GrammarTopic, UserProgress, Introduction, Category, VerbType, PersonId, SentencePart } from './types';
+import { PRE_DESIGNED_DATA, VERB_BANK } from './constants';
 import { cn } from './lib/utils';
 
 const CATEGORIES: { id: Category; label: string; icon: string; topics: GrammarTopic[] }[] = [
@@ -33,6 +34,12 @@ const CATEGORIES: { id: Category; label: string; icon: string; topics: GrammarTo
     label: 'Tiempos Simples', 
     icon: 'fa-solid fa-clock', 
     topics: ['presente', 'pasado', 'futuro', 'futuro_idiomatico', 'copreterito', 'pospreterito', 'subjuntivo_presente', 'subjuntivo_imperfecto', 'subjuntivo_futuro'] 
+  },
+  { 
+    id: 'pronombres', 
+    label: 'Pronombres', 
+    icon: 'fa-solid fa-user', 
+    topics: ['pronombres_personales', 'posesivos', 'demostrativos', 'reflexivos'] 
   },
   { 
     id: 'tiempos_perfectos', 
@@ -86,15 +93,30 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
 
   const [activeForm, setActiveForm] = useState<'afirmativo' | 'negativo' | 'pregunta'>('afirmativo');
+  const [activeGroup, setActiveGroup] = useState<'indicativo' | 'subjuntivo'>('indicativo');
+  const [activePerson, setActivePerson] = useState<PersonId>('yo');
 
   const startCategory = async (category: Category) => {
     setCurrentCategory(category);
+    
+    // Check if we have pre-designed data for this category AND NO specific verb is selected
+    if (PRE_DESIGNED_DATA[category] && !progress.selectedVerb) {
+      setIntroduction(PRE_DESIGNED_DATA[category] as Introduction);
+      setView('intro');
+      setActiveForm('afirmativo');
+      setActiveGroup('indicativo');
+      setActivePerson('yo');
+      return;
+    }
+
     setLoading(true);
     try {
       const intro = await generateIntroduction(category, progress.selectedVerb, progress.selectedVerbType);
       setIntroduction(intro);
       setView('intro');
       setActiveForm('afirmativo');
+      setActiveGroup('indicativo');
+      setActivePerson('yo');
     } catch (error) {
       console.error("Error generating introduction:", error);
     } finally {
@@ -222,6 +244,46 @@ export default function App() {
                   </div>
 
                   <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Banco de Verbos Comunes</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-2">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase block px-1">Regulares</span>
+                        <div className="flex flex-wrap gap-1">
+                          {VERB_BANK.regulares.map(v => (
+                            <button
+                              key={v.english}
+                              onClick={() => setProgress(prev => ({ ...prev, selectedVerb: v.spanish, selectedVerbType: 'regulares' }))}
+                              className={cn(
+                                "px-2 py-1 rounded-lg text-[10px] font-bold border transition-all",
+                                progress.selectedVerb === v.spanish ? "bg-duo-blue border-duo-blue text-white" : "bg-slate-50 border-slate-100 text-slate-500 hover:border-slate-200"
+                              )}
+                            >
+                              {v.spanish}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase block px-1">Irregulares</span>
+                        <div className="flex flex-wrap gap-1">
+                          {VERB_BANK.irregulares.map(v => (
+                            <button
+                              key={v.english}
+                              onClick={() => setProgress(prev => ({ ...prev, selectedVerb: v.spanish, selectedVerbType: 'irregulares' }))}
+                              className={cn(
+                                "px-2 py-1 rounded-lg text-[10px] font-bold border transition-all",
+                                progress.selectedVerb === v.spanish ? "bg-duo-blue border-duo-blue text-white" : "bg-slate-50 border-slate-100 text-slate-500 hover:border-slate-200"
+                              )}
+                            >
+                              {v.spanish}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Verbo Específico</label>
                     <div className="relative group">
                       <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-duo-blue transition-colors" />
@@ -230,8 +292,16 @@ export default function App() {
                         placeholder="Ej: Comer, Vivir, Ser..."
                         value={progress.selectedVerb}
                         onChange={(e) => setProgress(prev => ({ ...prev, selectedVerb: e.target.value }))}
-                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-duo-blue focus:bg-white outline-none transition-all text-sm font-medium"
+                        className="w-full pl-12 pr-12 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-duo-blue focus:bg-white outline-none transition-all text-sm font-medium"
                       />
+                      {progress.selectedVerb && (
+                        <button 
+                          onClick={() => setProgress(prev => ({ ...prev, selectedVerb: '' }))}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 transition-colors"
+                        >
+                          <XCircle className="w-5 h-5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </motion.div>
@@ -316,65 +386,153 @@ export default function App() {
               )}
 
               <div className="space-y-6">
-                <div className="flex items-center justify-between px-2">
-                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mapa de Conjugación</h3>
-                  <div className="flex bg-slate-200/50 p-1 rounded-xl">
-                    {(['afirmativo', 'negativo', 'pregunta'] as const).map((form) => (
-                      <button
-                        key={form}
-                        onClick={() => setActiveForm(form)}
-                        className={cn(
-                          "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all",
-                          activeForm === form 
-                            ? "bg-white text-duo-blue shadow-sm" 
-                            : "text-slate-500 hover:text-slate-700"
-                        )}
-                      >
-                        {form}
-                      </button>
-                    ))}
+                <div className="flex flex-col gap-4 px-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Modo</h3>
+                    <div className="flex bg-slate-200/50 p-1 rounded-xl">
+                      {(['indicativo', 'subjuntivo'] as const).map((group) => (
+                        <button
+                          key={group}
+                          onClick={() => setActiveGroup(group)}
+                          className={cn(
+                            "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all",
+                            activeGroup === group 
+                              ? "bg-duo-blue text-white shadow-sm" 
+                              : "text-slate-500 hover:text-slate-700"
+                          )}
+                        >
+                          {group}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Oración</h3>
+                    <div className="flex bg-slate-100 p-1 rounded-xl">
+                      {(['afirmativo', 'negativo', 'pregunta'] as const).map((form) => (
+                        <button
+                          key={form}
+                          onClick={() => setActiveForm(form)}
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all",
+                            activeForm === form 
+                              ? "bg-white text-duo-blue shadow-sm" 
+                              : "text-slate-500 hover:text-slate-700"
+                          )}
+                        >
+                          {form}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Persona</h3>
+                    <div className="flex flex-wrap gap-1.5 bg-slate-50 p-1.5 rounded-2xl">
+                      {(['yo', 'tu', 'el_ella', 'nosotros', 'uds', 'ellos'] as const).map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => setActivePerson(p)}
+                          className={cn(
+                            "px-3 py-2 rounded-xl text-[11px] font-bold transition-all border-2",
+                            activePerson === p 
+                              ? "bg-white border-duo-blue text-duo-blue shadow-sm" 
+                              : "bg-transparent border-transparent text-slate-500 hover:bg-white/50"
+                          )}
+                        >
+                          {p === 'el_ella' ? 'Él/Ella' : p === 'uds' ? 'Uds.' : p.charAt(0).toUpperCase() + p.slice(1)}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                  {introduction.examples.map((ex, i) => {
-                    const currentForm = ex.forms.find(f => f.type === activeForm) || ex.forms[0];
-                    return (
-                      <div key={i} className="bg-white p-6 rounded-[2rem] border-2 border-slate-100 shadow-sm hover:border-duo-blue transition-all group">
-                        <div className="flex items-center gap-2 mb-4">
-                          <span className="px-3 py-1 bg-blue-50 rounded-lg text-[10px] font-black text-duo-blue uppercase tracking-wider">
-                            {ex.tense}
-                          </span>
-                          <div className="h-px flex-1 bg-slate-50" />
-                        </div>
-
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between gap-4">
-                            <div className="flex-1">
-                              <span className="text-[10px] font-bold text-slate-300 uppercase block mb-1">Español</span>
-                              <span className="text-xl font-bold text-slate-700">{currentForm.spanish}</span>
-                            </div>
-                            <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center shrink-0">
-                              <ArrowRight className="w-5 h-5 text-slate-300" />
-                            </div>
-                            <div className="flex-1 text-right">
-                              <span className="text-[10px] font-bold text-duo-blue uppercase block mb-1">English</span>
-                              <span className="text-xl font-black text-duo-blue">{currentForm.english}</span>
-                            </div>
-                          </div>
-
-                          <div className="mt-4 pt-4 border-t border-slate-50">
-                            <div className="flex items-start gap-3 bg-slate-50/50 p-4 rounded-2xl">
-                              <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                              <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
-                                {ex.explanation}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
+                  {introduction.examples.filter(ex => ex.group === activeGroup).length === 0 && (
+                    <div className="bg-white p-12 rounded-[2rem] border-2 border-dashed border-slate-200 text-center space-y-4">
+                      <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto">
+                        <Info className="w-8 h-8 text-slate-300" />
                       </div>
-                    );
-                  })}
+                      <div className="space-y-1">
+                        <p className="font-bold text-slate-400">No hay ejemplos para este modo</p>
+                        <p className="text-xs text-slate-300">Cambia a "Indicativo" para ver los ejemplos base.</p>
+                      </div>
+                    </div>
+                  )}
+                  {introduction.examples
+                    .filter(ex => ex.group === activeGroup)
+                    .map((ex, i) => {
+                      const personData = ex.persons.find(p => p.id === activePerson) || ex.persons[0];
+                      const currentForm = personData.forms.find(f => f.type === activeForm) || personData.forms[0];
+                      
+                      const renderSentence = (parts: SentencePart[], isEnglish: boolean) => (
+                        <div className="flex flex-wrap items-baseline gap-x-0.5">
+                          {parts.map((part, idx) => (
+                            <motion.span
+                              key={idx}
+                              whileHover={{ scale: 1.05, y: -2 }}
+                              className={cn(
+                                "relative cursor-help px-0.5 rounded transition-colors group/part",
+                                part.type === 'person' && "text-slate-700 font-bold",
+                                part.type === 'auxiliary' && "text-amber-600 font-black bg-amber-50",
+                                part.type === 'verb' && (isEnglish ? "text-duo-blue font-black" : "text-slate-700 font-bold"),
+                                part.type === 'suffix' && "text-rose-600 font-black bg-rose-50 underline decoration-rose-200 decoration-2 underline-offset-4",
+                                part.type === 'other' && "text-slate-500"
+                              )}
+                            >
+                              {part.text}
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 text-white text-[9px] font-bold rounded opacity-0 group-hover/part:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-50 shadow-xl">
+                                {part.label}
+                                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
+                              </div>
+                            </motion.span>
+                          ))}
+                        </div>
+                      );
+
+                      return (
+                        <div key={i} className="bg-white p-6 rounded-[2rem] border-2 border-slate-100 shadow-sm hover:border-duo-blue transition-all group">
+                          <div className="flex items-center gap-2 mb-4">
+                            <span className="px-3 py-1 bg-blue-50 rounded-lg text-[10px] font-black text-duo-blue uppercase tracking-wider">
+                              {ex.tense}
+                            </span>
+                            <div className="h-px flex-1 bg-slate-50" />
+                          </div>
+
+                          <div className="space-y-6">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                              <div className="flex-1">
+                                <span className="text-[10px] font-bold text-slate-300 uppercase block mb-2">Español</span>
+                                <div className="text-xl">
+                                  {renderSentence(currentForm.spanish, false)}
+                                </div>
+                              </div>
+                              
+                              <div className="hidden md:flex w-10 h-10 rounded-full bg-slate-50 items-center justify-center shrink-0">
+                                <ArrowRight className="w-5 h-5 text-slate-300" />
+                              </div>
+
+                              <div className="flex-1 md:text-right">
+                                <span className="text-[10px] font-bold text-duo-blue uppercase block mb-2">English</span>
+                                <div className="text-xl md:flex md:justify-end">
+                                  {renderSentence(currentForm.english, true)}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="mt-4 pt-4 border-t border-slate-50">
+                              <div className="flex items-start gap-3 bg-slate-50/50 p-4 rounded-2xl">
+                                <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                                <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+                                  {ex.explanation}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
 

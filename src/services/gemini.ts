@@ -15,41 +15,59 @@ export async function generateIntroduction(category: Category, selectedVerb?: st
     ${selectedVerb ? `USA EL VERBO ESPECÍFICO: "${selectedVerb}" para todos los ejemplos.` : `Usa un verbo ${verbType === 'regulares' ? 'regular' : verbType === 'irregulares' ? 'irregular' : 'común'} en español para los ejemplos.`}
     
     REGLAS POR CATEGORÍA:
-    - Si es 'tiempos_simples': Cubre Presente, Pasado, Futuro, Futuro idiomático (voy a...), Copretérito, Pospretérito, Subjuntivo Presente, Subjuntivo Imperfecto (jugara/jugase) y Subjuntivo Futuro (jugare).
-    - Si es 'tiempos_perfectos': Cubre Presente Perfecto, Pasado Perfecto, Futuro Perfecto, Futuro Idiomático Perfecto (voy a haber jugado) y Condicional Perfecto. DEBES mostrar cómo el verbo auxiliar 'haber' cambia en sus formas simples para formar estos tiempos.
-    - Si es 'tiempos_continuos': Cubre Presente Continuo, Pasado Continuo, Futuro Continuo, Futuro Idiomático Continuo (voy a estar jugando) y Condicional Continuo. DEBES mostrar cómo el verbo auxiliar 'estar' cambia en sus formas simples para formar estos tiempos.
+    - Si es 'tiempos_simples': 
+        * Grupo 'indicativo': Presente, Pasado, Futuro, Futuro idiomático (voy a...), Copretérito, Pospretérito.
+        * Grupo 'subjuntivo': Subjuntivo Presente, Subjuntivo Imperfecto (jugara/jugase), Subjuntivo Futuro (jugare).
+    - Si es 'tiempos_perfectos': 
+        * Grupo 'indicativo': Presente Perfecto, Pasado Perfecto, Futuro Perfecto, Futuro Idiomático Perfecto (voy a haber jugado), Condicional Perfecto.
+        * Grupo 'subjuntivo': Pretérito Perfecto de Subjuntivo (haya jugado), Pluscuamperfecto de Subjuntivo (hubiera/hubiese jugado).
+    - Si es 'tiempos_continuos': 
+        * Grupo 'indicativo': Presente Continuo, Pasado Continuo, Futuro Continuo, Futuro Idiomático Continuo (voy a estar jugando), Condicional Continuo.
+        * Grupo 'subjuntivo': Presente Continuo de Subjuntivo (esté jugando), Pasado Continuo de Subjuntivo (estuviera/estuviese jugando).
     
-    PARA CADA TIEMPO, debes incluir:
-    - La versión AFIRMATIVA (Yo [verbo] / I [verb])
-    - La versión NEGATIVA (Yo no [verbo] / I [aux] not [verb])
-    - La versión INTERROGATIVA (¿[verbo] yo? / [Aux] I [verb]?)
+    PARA CADA TIEMPO, debes incluir las 6 PERSONAS GRAMATICALES:
+    - 'yo' (I)
+    - 'tu' (You)
+    - 'el_ella' (He/She/It)
+    - 'nosotros' (We)
+    - 'uds' (You all)
+    - 'ellos' (They)
     
-    IMPORTANTE: Usa una estructura repetitiva enfocada SOLO en el pronombre "Yo" y el verbo. No añadas complementos ni contexto.
+    PARA CADA PERSONA, debes incluir:
+    - La versión AFIRMATIVA
+    - La versión NEGATIVA
+    - La versión INTERROGATIVA
+    
+    IMPORTANTE: Cada oración (spanish y english) debe ser un ARRAY de objetos (SentencePart).
+    Cada objeto debe tener:
+    - "text": El fragmento de texto (ej: "I", " do", " not", " play", "s")
+    - "type": Uno de ["person", "auxiliary", "verb", "suffix", "other"]
+    - "label": El nombre gramatical en español (ej: "Sujeto", "Auxiliar", "Verbo", "Sufijo 3ra Persona")
+    
+    REGLA DE ORO: Resalta los cambios gramaticales (como la 's' en 3ra persona inglés o auxiliares) separándolos en su propio objeto con type "suffix" o "auxiliary".
     
     Sigue estrictamente este formato JSON:
     {
       "title": "Nombre de la Categoría",
-      "definition": "Definición clara y educativa en español sobre cómo funcionan estos sistemas en español vs inglés",
-      "list": ["Lista de auxiliares o palabras clave"],
+      "definition": "Definición clara y educativa",
+      "list": ["Auxiliares clave"],
       "examples": [
         {
-          "tense": "Nombre del tiempo (ej: Presente)",
-          "explanation": "Análisis gramatical profundo: Identifica el tiempo, el modo, el uso del auxiliar en ambos idiomas y la estructura (ej: Sujeto + Auxiliar + Verbo en participio).",
-          "forms": [
+          "tense": "Nombre del tiempo",
+          "group": "indicativo" o "subjuntivo",
+          "explanation": "Análisis gramatical",
+          "persons": [
             {
-              "type": "afirmativo",
-              "spanish": "Yo [verbo]",
-              "english": "I [verb]"
-            },
-            {
-              "type": "negativo",
-              "spanish": "Yo no [verbo]",
-              "english": "I [aux] not [verb]"
-            },
-            {
-              "type": "pregunta",
-              "spanish": "¿[verbo] yo?",
-              "english": "[Aux] I [verb]?"
+              "id": "yo",
+              "label": "Yo",
+              "forms": [
+                { 
+                  "type": "afirmativo", 
+                  "spanish": [{"text": "Yo", "type": "person", "label": "Sujeto"}, {"text": " juego", "type": "verb", "label": "Verbo"}],
+                  "english": [{"text": "I", "type": "person", "label": "Sujeto"}, {"text": " play", "type": "verb", "label": "Verbo"}]
+                }
+                // ... otros tipos de oración
+              ]
             }
           ]
         }
@@ -73,21 +91,55 @@ export async function generateIntroduction(category: Category, selectedVerb?: st
               type: Type.OBJECT,
               properties: {
                 tense: { type: Type.STRING },
+                group: { type: Type.STRING, enum: ["indicativo", "subjuntivo"] },
                 explanation: { type: Type.STRING },
-                forms: {
+                persons: {
                   type: Type.ARRAY,
                   items: {
                     type: Type.OBJECT,
                     properties: {
-                      type: { type: Type.STRING, enum: ["afirmativo", "negativo", "pregunta"] },
-                      spanish: { type: Type.STRING },
-                      english: { type: Type.STRING }
+                      id: { type: Type.STRING, enum: ["yo", "tu", "el_ella", "nosotros", "uds", "ellos"] },
+                      label: { type: Type.STRING },
+                      forms: {
+                        type: Type.ARRAY,
+                        items: {
+                          type: Type.OBJECT,
+                          properties: {
+                            type: { type: Type.STRING, enum: ["afirmativo", "negativo", "pregunta"] },
+                            spanish: {
+                              type: Type.ARRAY,
+                              items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                  text: { type: Type.STRING },
+                                  type: { type: Type.STRING, enum: ["person", "auxiliary", "verb", "suffix", "other"] },
+                                  label: { type: Type.STRING }
+                                },
+                                required: ["text", "type", "label"]
+                              }
+                            },
+                            english: {
+                              type: Type.ARRAY,
+                              items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                  text: { type: Type.STRING },
+                                  type: { type: Type.STRING, enum: ["person", "auxiliary", "verb", "suffix", "other"] },
+                                  label: { type: Type.STRING }
+                                },
+                                required: ["text", "type", "label"]
+                              }
+                            }
+                          },
+                          required: ["type", "spanish", "english"]
+                        }
+                      }
                     },
-                    required: ["type", "spanish", "english"]
+                    required: ["id", "label", "forms"]
                   }
                 }
               },
-              required: ["tense", "explanation", "forms"]
+              required: ["tense", "group", "explanation", "persons"]
             }
           }
         },
